@@ -96,13 +96,14 @@ class TestCsvdiff(unittest.TestCase):
         assert patch.is_valid(diff)
         assert not patch.is_typed(diff)
         o = StringIO()
-        csvdiff._summarize_diff(diff, len(lhs), stream=o)
+        csvdiff._summarize_diff(diff, stream=o)
         self.assertEqual(
             o.getvalue(),
             "1 rows removed (33.3%)\n"
             "1 rows added (33.3%)\n"
             "1 rows changed (33.3%)\n"
         )
+        csvdiff._exit_meaningfully(diff)
 
     def test_summarize_cmd(self):
         lhs = [
@@ -135,7 +136,7 @@ class TestCsvdiff(unittest.TestCase):
         assert patch.is_valid(diff)
         assert not patch.is_typed(diff)
         o = StringIO()
-        csvdiff._summarize_diff(diff, len(lhs), stream=o)
+        csvdiff._summarize_diff(diff, stream=o)
         self.assertEqual(
             o.getvalue(),
             'files are identical\n'

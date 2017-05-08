@@ -12,6 +12,7 @@ import sys
 import json
 import copy
 import itertools
+import operator as op
 
 import jsonschema
 
@@ -196,7 +197,8 @@ def save(diff, stream=sys.stdout, compact=False):
     json.dump(diff, stream, **flags)
 
 
-def create(from_records, to_records, index_columns, ignore_columns=None):
+def create(from_records, to_records, index_columns, ignore_columns=None,
+           significant=None):
     """
     Diff two sets of records, using the index columns as the primary key for
     both datasets.
@@ -208,15 +210,15 @@ def create(from_records, to_records, index_columns, ignore_columns=None):
         from_indexed = records.filter_ignored(from_indexed, ignore_columns)
         to_indexed = records.filter_ignored(to_indexed, ignore_columns)
 
-    return create_indexed(from_indexed, to_indexed, index_columns)
+    return create_indexed(from_indexed, to_indexed, index_columns, significant=significant)
 
 
-def create_indexed(from_indexed, to_indexed, index_columns):
+def create_indexed(from_indexed, to_indexed, index_columns, significant=None):
     # examine keys for overlap
     removed, added, shared = _compare_keys(from_indexed, to_indexed)
 
     # check for changed rows
-    changed = _compare_rows(from_indexed, to_indexed, shared)
+    changed = _compare_rows(from_indexed, to_indexed, shared, significant=significant)
 
     diff = _assemble(removed, added, changed, from_indexed, to_indexed,
                      index_columns)
@@ -233,17 +235,39 @@ def _compare_keys(from_recs, to_recs):
     return removed, added, shared
 
 
-def _compare_rows(from_recs, to_recs, keys):
+class NearlyEqual(object):
+    def __init__(self, significant):
+        self.significant = significant
+
+    def __call__(self, a, b):
+        return (a == b
+                or (isinstance(a, float) and
+                    int(a * 10**self.significant) == int(b * 10**self.significant)))
+
+
+def _compare_rows(from_recs, to_recs, keys, significant=None):
     "Return the set of keys which have changed."
-    return set(
-        k for k in keys
-        if sorted(from_recs[k].items()) != sorted(to_recs[k].items())
-    )
+    is_equal = (op.eq
+                if not significant
+                else NearlyEqual(significant))
+
+    changed_keys = set()
+    for key in keys:
+        lhs = from_recs[key]
+        rhs = to_recs[key]
+
+        for k, v in lhs.items():
+            if not is_equal(v, rhs[k]):
+                changed_keys.add(key)
+                break
+
+    return changed_keys
 
 
 def _assemble(removed, added, changed, from_recs, to_recs, index_columns):
     diff = {}
     diff['_index'] = index_columns
+    diff['_orig_size'] = len(from_recs)
     diff['added'] = records.sort(to_recs[k] for k in added)
     diff['removed'] = records.sort(from_recs[k] for k in removed)
     diff['changed'] = sorted(({'key': list(k),

@@ -31,7 +31,8 @@ EXIT_DIFFERENT = 1
 EXIT_ERROR = 2
 
 
-def diff_files(from_file, to_file, index_columns, sep=',', ignored_columns=None):
+def diff_files(from_file, to_file, index_columns, sep=',', ignore_columns=None,
+               significant=None):
     """
     Diff two CSV files, returning the patch which transforms one into the
     other.
@@ -41,7 +42,8 @@ def diff_files(from_file, to_file, index_columns, sep=',', ignored_columns=None)
             from_records = records.load(from_stream, sep=sep)
             to_records = records.load(to_stream, sep=sep)
             return patch.create(from_records, to_records, index_columns,
-                                ignore_columns=ignored_columns)
+                                ignore_columns=ignore_columns,
+                                significant=significant)
 
 
 def diff_records(from_records, to_records, index_columns):
@@ -129,8 +131,10 @@ class CSVType(click.ParamType):
               help='Separator to use between fields [default: comma]')
 @click.option('--ignore_columns', '-i', type=CSVType(),
               help='a comma seperated list of columns to ignore from the comparison')
+@click.option('--significant', type=int, default=None,
+              help='Only consider this many decimal places when comparing numbers')
 def csvdiff_cmd(index_columns, from_csv, to_csv, style=None, output=None,
-                sep=',', quiet=False, ignore_columns=None):
+                sep=',', quiet=False, ignore_columns=None, significant=None):
     """
     Compare two csv files to see what rows differ between them. The files
     are each expected to have a header row, and for each row to be uniquely
@@ -138,22 +142,16 @@ def csvdiff_cmd(index_columns, from_csv, to_csv, style=None, output=None,
     """
 
     if ignore_columns is not None:
-        for i in ignore_columns:
-            if i in index_columns:
-                error.abort("You can't ignore an index column")
+        if set(ignore_columns).intersection(index_columns):
+            error.abort("You can't ignore an index column")
 
     ostream = (open(output, 'w') if output
                else io.StringIO() if quiet
                else sys.stdout)
 
     try:
-        if style == 'summary':
-            _diff_and_summarize(from_csv, to_csv, index_columns, ostream,
-                                sep=sep, ignored_columns=ignore_columns)
-        else:
-            compact = (style == 'compact')
-            _diff_files_to_stream(from_csv, to_csv, index_columns, ostream,
-                                  compact=compact, sep=sep, ignored_columns=ignore_columns)
+        _csvdiff_checked(from_csv, to_csv, index_columns, ostream, sep=sep,
+                         ignore_columns=ignore_columns, significant=significant, style=style)
 
     except records.InvalidKeyError as e:
         error.abort(e.args[0])
@@ -162,35 +160,41 @@ def csvdiff_cmd(index_columns, from_csv, to_csv, style=None, output=None,
         ostream.close()
 
 
-def _diff_files_to_stream(from_csv, to_csv, index_columns, ostream,
-                          compact=False, sep=',', ignored_columns=None):
-    diff = diff_files(from_csv, to_csv, index_columns, sep=sep, ignored_columns=ignored_columns)
-    patch.save(diff, ostream, compact=compact)
+def _csvdiff_checked(from_csv, to_csv, index_columns, ostream,
+                     sep=None, ignore_columns=None, significant=None, style=None):
+    diff = diff_files(from_csv, to_csv, index_columns, sep=sep,
+                      ignore_columns=ignore_columns, significant=significant)
+
+    if style == 'summary':
+        sys.exit(1)
+        _summarize_diff(diff, ostream)
+
+    elif style == 'compact':
+        patch.save(diff, ostream, compact=False)
+
+    else:
+        patch.save(diff, ostream, compact=True)
+
+    _exit_meaningfully(diff)
+
+
+def _exit_meaningfully(diff):
     exit_code = (EXIT_SAME
                  if patch.is_empty(diff)
                  else EXIT_DIFFERENT)
     sys.exit(exit_code)
 
 
-def _diff_and_summarize(from_csv, to_csv, index_columns, stream=sys.stdout,
-                        sep=',', ignored_columns=None):
+def _display_diff(diff, ostream, compact=False):
+    patch.save(diff, ostream, compact=compact)
+
+
+def _summarize_diff(diff, stream=sys.stdout):
     """
     Print a summary of the difference between the two files.
     """
-    from_records = list(records.load(from_csv, sep=sep))
-    to_records = records.load(to_csv, sep=sep)
-    diff = patch.create(from_records, to_records, index_columns, ignored_columns)
-    _summarize_diff(diff, len(from_records), stream=stream)
-    exit_code = (EXIT_SAME
-                 if patch.is_empty(diff)
-                 else EXIT_DIFFERENT)
-    sys.exit(exit_code)
-
-
-def _summarize_diff(diff, orig_size, stream=sys.stdout):
-    if orig_size == 0:
-        # slightly arbitrary when the original data was empty
-        orig_size = 1
+    # avoid divide-by-0 by calling it at least one record
+    orig_size = min(diff['_orig_size'], 1)
 
     n_removed = len(diff['removed'])
     n_added = len(diff['added'])
