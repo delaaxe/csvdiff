@@ -240,9 +240,16 @@ class NearlyEqual(object):
         self.significant = significant
 
     def __call__(self, a, b):
-        return (a == b
-                or (isinstance(a, float) and
-                    int(a * 10**self.significant) == int(b * 10**self.significant)))
+        if a == b:
+            return True
+
+        try:
+            a = float(a)
+            b = float(b)
+            return int(a * 10**self.significant) == int(b * 10**self.significant)
+
+        except ValueError:
+            return False
 
 
 def _compare_rows(from_recs, to_recs, keys, significant=None):
