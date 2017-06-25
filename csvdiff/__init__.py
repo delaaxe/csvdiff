@@ -33,15 +33,11 @@ EXIT_ERROR = 2
 
 def diff(from_csv, to_csv, index_columns, sep=',', ignored_columns=None):
     """
-    Diff two CSV files, returning the patch which transforms one into the
+    Diff two CSVs, returning the patch which transforms one into the
     other.
     """
-    with open(from_file) as from_stream:
-        with open(to_file) as to_stream:
-            from_records = records.load(from_stream, sep=sep)
-            to_records = records.load(to_stream, sep=sep)
-            return patch.create(from_records, to_records, index_columns,
-                                ignore_columns=ignored_columns)
+    return diff_files(io.StringIO(from_csv), io.StringIO(to_csv),
+                      index_columns, sep, ignored_columns)
 
 
 def diff_files(from_file, to_file, index_columns, sep=',', ignored_columns=None):

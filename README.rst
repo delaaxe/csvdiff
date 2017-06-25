@@ -133,6 +133,17 @@ This can be useful if you're using csvdiff to transform data that's outside your
 
 For more usage options, run ``csvdiff --help`` or ``csvpatch --help``.
 
+API
+---
+
+```python
+import csvdiff
+
+patch = csvdiff.diff_files('file1.csv', 'file2.csv', ['id'])
+print(patch['changed'])
+```
+
+
 License
 -------
 
