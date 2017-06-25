@@ -31,7 +31,7 @@ EXIT_DIFFERENT = 1
 EXIT_ERROR = 2
 
 
-def diff_files(from_file, to_file, index_columns, sep=',', ignored_columns=None):
+def diff(from_csv, to_csv, index_columns, sep=',', ignored_columns=None):
     """
     Diff two CSV files, returning the patch which transforms one into the
     other.
@@ -42,6 +42,19 @@ def diff_files(from_file, to_file, index_columns, sep=',', ignored_columns=None)
             to_records = records.load(to_stream, sep=sep)
             return patch.create(from_records, to_records, index_columns,
                                 ignore_columns=ignored_columns)
+
+
+def diff_files(from_file, to_file, index_columns, sep=',', ignored_columns=None):
+    """
+    Diff two CSV files, returning the patch which transforms one into the
+    other.
+    """
+    with open(from_file) as from_stream:
+        from_records = records.load(from_stream, sep=sep)
+    with open(to_file) as to_stream:
+        to_records = records.load(to_stream, sep=sep)
+    return patch.create(from_records, to_records, index_columns,
+                        ignore_columns=ignored_columns)
 
 
 def diff_records(from_records, to_records, index_columns):
